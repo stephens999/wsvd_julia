@@ -1,0 +1,10 @@
+---
+title: "wsvd_julia"
+---
+
+This is my website for trying to develop a version of "weighted SVD" (wSVD) in Julia. In doing so I am learning a bit about quarto, a bit about Julia, a bit about vscode.... it's a learning experience.
+
+By wSVD I mean solving the following problem
+$$ \min \sum_{ij} 0.5\tau_{ij} (Y_{ij}-(UV')_{ij})^2 $$
+
+First I'm going to implement svd in two ways: calling the 

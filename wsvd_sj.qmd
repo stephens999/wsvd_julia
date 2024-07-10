@@ -1,0 +1,76 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+Here I implement the algorithm in Srebro + Jaakola (2003)
+```{julia}
+
+n = 1000
+p = 5000
+M = randn(n,p)
+W = abs.(randn(n,p))
+k = 3
+
+
+
+
+using SparseArrays, LinearAlgebra, Plots, LowRankApprox, PROPACK
+
+# a wrapper for tsvd from PROPACK library
+tsvdfact = function(M,k)
+    U, S, V, bnd, nprod, ntprod = tsvd(M,k=k)
+    return (U=U, S=S, Vt=V')
+end
+
+# naive implementation - requires forming matrices of size np
+wsvd_sj = function(M, W, k, maxiter=100)
+    X = zeros(size(M))
+    F = tsvdfact( W .* M + (1 .- W) .* X,k)
+    for i in 1:maxiter
+        X = F.U * diagm(F.S) * F.Vt
+        F = tsvdfact( W .* M + (1 .- W) .* X,k)
+    end
+    return F
+end
+
+# compute ||M-UDV'||_2^2 without forming UDV' (only works when F.U and F.V are orthonormal)
+error_frob = function(M, F)
+    sum(M.^2) + sum(F.S.^2) - 2*sum((diagm(F.S) * F.Vt) .* (F.U' * M))
+end
+
+# compute the hadamard product of a sparse T and UV' without forming UV'
+had_sparse_lr2 = function(T,u,v)
+    nzv = zeros(size(T.nzval)) #store non-zero values of result
+    for k in 1:size(u,2)
+        nzv += (spdiagm(u[:,k]) * T * spdiagm(v[:,k])).nzval
+    end
+    SparseMatrixCSC(T.m, T.n, copy(T.colptr), copy(T.rowval), nzv)
+end
+
+# compute ||tau o (M -UDV')||_2^2 when tau is sparse without forming UDV' (assumes F.U and F.V are orthonormal)
+error_wfrob = function(M, tau, F)
+    tM = sqrt.(tau) .* M
+    tF = had_sparse_lr2(sqrt.(tau),F.U * diagm(F.S),F.Vt')
+    sum((tM-tF).^2)
+end
+
+```
+
+
+
+
+```{julia}
+F = tsvdfact(M,k)
+error_frob(M,F) - sum((M.-F.U*diagm(F.S) * F.Vt).^2)
+
+tau = sprand(n,p,0.01)
+
+error_wfrob(M,tau,F) - sum((sqrt.(tau) .* (M.-F.U*diagm(F.S) * F.Vt)).^2)
+
+F2 = wsvd_sj(M,tau,k)
+
+error_wfrob(M,tau,F)
+error_wfrob(M,tau,F2)
+```

@@ -1,0 +1,128 @@
+---
+title: "SVD via ALS"
+format: html
+engine: julia
+---
+
+
+
+```{julia}
+# Notes on project setup
+# I tried to set up a Project.toml by:
+# opening terminal with julia and press ] to get the package manager
+# pkg>  activate ~/git/wsvd_julia
+# > add Plots
+# > add LowRankApprox
+# > add PROPACK
+# 
+# But i had problems getting the PROPACK package to work this way, for unknown reasons... so I have kept the Pkg.add in the notebook for this
+
+import Pkg; Pkg.add("PROPACK")
+using SparseArrays, LinearAlgebra, Plots, LowRankApprox, PROPACK
+
+# a wrapper for tsvd from PROPACK library
+tsvdfact = function(M,k)
+    U, S, V, bnd, nprod, ntprod = tsvd(M,k=k)
+    return (U=U, S=S, Vt=V')
+end
+
+
+svd_als = function(M,k,maxiter = 100)
+    (n,p) = size(M)
+    U = randn(n,k)
+    S = randn(k)
+    V = randn(p,k)
+    for i in 1:maxiter
+        U,S,V = update_svd_als(M,U,S,V)
+    end
+    return (U=U,S=S,V=V,Vt=V')
+end
+
+ # implements als update; based on code in softImpute package (file simpute.als.R)
+update_svd_als = function(M,U,S,V)
+    k = size(U,2)
+    UtM = U' * M
+    F = tsvdfact(UtM,k) # by using tsvd instead of svd I hope to allow the case where M is a linear operator (so UtM is also a linear operator). It is maybe slightly slower than using svd(UtM)
+    V = F.Vt'
+    S = F.S
+    U = U * F.U
+
+    MV = M * V
+    F = tsvdfact(MV,k)
+    U = F.U
+    S = F.S
+    V = V * F.Vt'
+
+    return (U=U,S=S,V=V)
+end
+
+
+
+error = function(M,F,k)
+    return sum((M-F.U[:,1:k] * diagm(F.S[1:k]) * F.Vt[1:k,:]).^2)
+end
+```
+
+
+```{julia}
+
+n = 1000
+p = 5000
+M = randn(n,p)
+
+k=20
+@time F = svd(M)
+@time F2 = svd_als(M,20)
+@time F3 = psvdfact(M)
+@time F4 = tsvdfact(M,k)
+
+println(error(M,F,k))
+println(error(M,F2,k))
+println(error(M,F3,k))
+println(error(M,F4,k))
+```
+
+
+```{julia}
+#scatter(F.V[:,2],F2[:V][:,2])
+```
+
+```{julia}
+#scatter(F.V[:,1],F3[:V][:,1])
+```
+
+
+Now try the same thing with a sparse matrix. Note psvdfact does not exploit sparsity
+so it's slow if n and p are big.
+
+```{julia}
+n = 50000
+p = 10000
+M = sprand(n,p,0.01)
+ 
+k = 20
+#@time F = svd(M)
+@time F2 = svd_als(M,k)
+#@time F3 = psvdfact(M)
+@time F4 = tsvdfact(M,k)
+
+#println(error(M,F,k))
+println(error(M,F2,k))
+#println(error(M,F3,k))
+println(error(M,F4,k))
+
+```
+
+
+
+Try running on linear operators
+```{julia}
+import LinearOperators
+Mop = LinearOperators.LinearOperator(M)
+
+@time F2 = svd_als(Mop,k)
+@time F4 = tsvdfact(Mop,k)
+
+
+```
+
